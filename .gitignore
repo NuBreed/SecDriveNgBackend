@@ -1,0 +1,32 @@
+# Environment / secrets
+.env
+*.env
+!.env.example
+
+# Firebase / service-account credentials
+*firebase-adminsdk*.json
+client_secret_*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+
+# Virtualenv
+venv/
+.venv/
+env/
+
+# Django
+*.log
+db.sqlite3
+/staticfiles/
+/media/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+SECURITY.md
