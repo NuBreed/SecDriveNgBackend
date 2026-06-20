@@ -1,6 +1,7 @@
 from django.urls import path
 
 from journeys import views
+from journeys import sharing_views
 
 app_name = 'journeys'
 
@@ -21,4 +22,9 @@ urlpatterns = [
     path('<uuid:pk>/cancel/', views.JourneyCancelView.as_view(), name='cancel'),
     path('<uuid:pk>/locations/', views.JourneyLocationView.as_view(), name='locations'),
     path('<uuid:pk>/timeline/', views.JourneyTimelineView.as_view(), name='timeline'),
+    # Sharing
+    path('<uuid:pk>/share/', sharing_views.JourneyShareView.as_view(), name='share'),
+    path('<uuid:pk>/shared/', sharing_views.JourneySharedStatusView.as_view(), name='shared'),
+    path('<uuid:pk>/unshare/', sharing_views.JourneyUnshareView.as_view(), name='unshare'),
+    path('<uuid:pk>/tracking-link/', sharing_views.TrackingLinkCreateView.as_view(), name='tracking-link'),
 ]

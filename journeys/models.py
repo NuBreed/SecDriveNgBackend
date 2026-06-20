@@ -183,3 +183,73 @@ class JourneyEvent(models.Model):
 
     def __str__(self):
         return f'Event({self.event_type}, {self.journey_id})'
+
+
+class JourneyShare(models.Model):
+    """A record that a specific TrustedContact is monitoring this journey."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    journey = models.ForeignKey(Journey, on_delete=models.CASCADE, related_name='shares')
+    contact = models.ForeignKey(
+        'safety.TrustedContact', on_delete=models.CASCADE, related_name='journey_shares',
+    )
+    # Granular privacy controls (Story 13).
+    privacy = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text='e.g. {"show_location": true, "show_participant": true, "show_asset": true}',
+    )
+    active = models.BooleanField(default=True)
+    shared_at = models.DateTimeField(auto_now_add=True)
+    unshared_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-shared_at']
+        unique_together = [('journey', 'contact')]
+
+    def __str__(self):
+        return f'JourneyShare({self.journey_id} → {self.contact_id})'
+
+    @property
+    def default_privacy(self):
+        return {
+            'show_location': True,
+            'show_participant': True,
+            'show_asset': True,
+            'show_name': True,
+        }
+
+    def get_privacy(self):
+        base = self.default_privacy
+        base.update(self.privacy)
+        return base
+
+
+class TrackingLink(models.Model):
+    """Secure, shareable link that lets recipients view a live journey (Story 6)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    journey = models.ForeignKey(Journey, on_delete=models.CASCADE, related_name='tracking_links')
+    token = models.CharField(max_length=512, unique=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_tracking_links',
+    )
+    active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'TrackingLink({self.journey_id})'
+
+    @property
+    def is_valid(self):
+        from django.utils import timezone
+        if not self.active:
+            return False
+        if self.expires_at and timezone.now() > self.expires_at:
+            return False
+        return True

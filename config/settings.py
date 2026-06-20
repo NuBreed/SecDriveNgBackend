@@ -75,6 +75,8 @@ LOCAL_APPS = [
     'common',
     'kyc',
     'qr_codes',
+    'route_intelligence',
+    'accident_detection',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -153,7 +155,39 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'kyc.tasks.scan_expiring_documents',
         'schedule': 60 * 60 * 24,  # daily
     },
+    'monitor-active-journeys': {
+        'task': 'route_intelligence.monitor_active_journeys',
+        'schedule': 30,  # every 30 seconds
+    },
+    'retry-pending-escalations': {
+        'task': 'accident_detection.retry_pending_escalations',
+        'schedule': 60,  # every minute
+    },
+    'compute-fleet-safety-scores': {
+        'task': 'operators.compute_all_fleet_safety_scores',
+        'schedule': 60 * 60 * 6,  # every 6 hours
+    },
 }
+
+# ── Route Intelligence thresholds ─────────────────────────────────────────────
+ROUTE_DEVIATION_MINOR_M = int(os.getenv('ROUTE_DEVIATION_MINOR_M', '200'))
+ROUTE_DEVIATION_MAJOR_M = int(os.getenv('ROUTE_DEVIATION_MAJOR_M', '500'))
+ROUTE_DEVIATION_CRITICAL_M = int(os.getenv('ROUTE_DEVIATION_CRITICAL_M', '1000'))
+WRONG_DIRECTION_THRESHOLD_DEG = float(os.getenv('WRONG_DIRECTION_THRESHOLD_DEG', '90'))
+UNEXPECTED_STOP_SPEED_MS = float(os.getenv('UNEXPECTED_STOP_SPEED_MS', '0.5'))
+UNEXPECTED_STOP_DURATION_S = int(os.getenv('UNEXPECTED_STOP_DURATION_S', '180'))
+# When True, CRITICAL risk auto-creates an iSafePass incident without waiting for manual escalation.
+ROUTE_INTELLIGENCE_AUTO_ESCALATE = env_bool('ROUTE_INTELLIGENCE_AUTO_ESCALATE', False)
+
+# ── Accident Detection thresholds ──────────────────────────────────────────────
+ACCIDENT_IMPACT_ACCEL_MS2 = float(os.getenv('ACCIDENT_IMPACT_ACCEL_MS2', '15.0'))
+ACCIDENT_ROLLOVER_TILT_DEG = float(os.getenv('ACCIDENT_ROLLOVER_TILT_DEG', '60.0'))
+ACCIDENT_ROLLOVER_RATE_DEG = float(os.getenv('ACCIDENT_ROLLOVER_RATE_DEG', '90.0'))
+ACCIDENT_SUDDEN_STOP_DELTA_MS = float(os.getenv('ACCIDENT_SUDDEN_STOP_DELTA_MS', '8.0'))
+ACCIDENT_SUDDEN_STOP_MIN_SPEED = float(os.getenv('ACCIDENT_SUDDEN_STOP_MIN_SPEED', '5.0'))
+ACCIDENT_CONFIRMATION_TIMEOUT_S = int(os.getenv('ACCIDENT_CONFIRMATION_TIMEOUT_S', '30'))
+ACCIDENT_ESCALATION_MAX_RETRIES = int(os.getenv('ACCIDENT_ESCALATION_MAX_RETRIES', '3'))
+ACCIDENT_RETRY_DELAY_S = int(os.getenv('ACCIDENT_RETRY_DELAY_S', '30'))
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
@@ -162,8 +196,8 @@ CELERY_BEAT_SCHEDULE = {
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': os.getenv('POSTGRES_DB', 'isafepass'),
-        'USER': os.getenv('POSTGRES_USER', 'justwin'),
+        'NAME': os.getenv('POSTGRES_DB', 'xxxxxxxxxxxx'),
+        'USER': os.getenv('POSTGRES_USER', 'xxxxxxxxx'),
         'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
         'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
         'PORT': os.getenv('POSTGRES_PORT', '5432'),
@@ -199,6 +233,15 @@ SPECTACULAR_SETTINGS = {
     'ENUM_NAME_OVERRIDES': {
         'VerificationStatusEnum': 'kyc.models.VerificationStatus',
         'EntityStatusEnum': 'drivers.models.DriverVerification.Status',
+        'DeviationSeverityEnum': 'route_intelligence.models.RouteDeviation.Severity',
+        'WarningSeverityEnum': 'route_intelligence.models.JourneyWarning.Severity',
+        'FleetSafetyLevelEnum': 'operators.models.FleetSafetyScore.Level',
+        'OperatorBusinessTypeEnum': 'operators.models.TransportOperator.BusinessType',
+        'FleetParticipantTypeEnum': 'operators.models.FleetParticipant.ParticipantType',
+        'FleetParticipantStatusEnum': 'operators.models.FleetParticipant.Status',
+        'FleetAssetStatusEnum': 'operators.models.FleetAsset.Status',
+        'OperatorMembershipRoleEnum': 'operators.models.OperatorMembership.Role',
+        'BranchTypeEnum': 'operators.models.Branch.BranchType',
     },
 }
 
@@ -312,8 +355,11 @@ AFRICASTALKING_SENDER_ID = os.getenv('AFRICASTALKING_SENDER_ID', '')
 # iSafePass trusted backend bridge. When BASE_URL or the
 # service secret are unset the bridge is disabled and the SSO endpoints return
 # a clean 503 instead of attempting a live call.
-ISAFEPASS_BASE_URL = os.getenv('ISAFEPASS_BASE_URL', '')
-ISAFEPASS_SERVICE_SECRET = os.getenv('ISAFEPASS_SERVICE_SECRET', '')
+ISAFEPASS_BASE_URL      = os.getenv('ISAFEPASS_BASE_URL', '')
+# ApiKey credentials issued by the iSafePass developer portal for SecDrive's
+# DeveloperApplication (bridge_enabled=True required on that app).
+ISAFEPASS_API_KEY_ID    = os.getenv('ISAFEPASS_API_KEY_ID', '')
+ISAFEPASS_API_SECRET    = os.getenv('ISAFEPASS_API_SECRET', '')
 ISAFEPASS_TIMEOUT_SECONDS = int(os.getenv('ISAFEPASS_TIMEOUT_SECONDS', '10'))
 
 # ── KYC & Verification ───────────────────────────────────────────────

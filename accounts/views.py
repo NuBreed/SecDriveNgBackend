@@ -479,6 +479,43 @@ class ISafePassCallbackAPIView(APIView):
         })
 
 
+class ISafePassSSOAPIView(APIView):
+    """POST /isafepass/sso/ — one-shot SSO: email+password → SecDrive JWT.
+
+    The app posts the user's iSafePass credentials here. SecDrive fetches an
+    iSafePass access token on the user's behalf, verifies it via the bridge,
+    then creates or links a SecDrive account and issues SecDrive tokens.
+    The user never has to know about the bridge handshake.
+    """
+    permission_classes = [AllowAny]
+    throttle_scope = 'auth'
+
+    @extend_schema(
+        request={'application/json': {'type': 'object', 'properties': {
+            'email': {'type': 'string'},
+            'password': {'type': 'string'},
+        }, 'required': ['email', 'password']}},
+        responses=UserProfileSerializer,
+    )
+    def post(self, request):
+        email    = (request.data.get('email') or '').strip()
+        password = (request.data.get('password') or '').strip()
+        if not email or not password:
+            return Response(
+                {'detail': 'email and password are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bridge = get_bridge()
+        try:
+            credential = bridge.get_token(email, password)
+        except ISafePassUnavailable as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        # Reuse the callback handler — it verifies credential, links user, issues tokens.
+        return ISafePassCallbackAPIView()._handle(request, credential)
+
+
 class ISafePassLinkAPIView(APIView):
     """POST /isafepass/link/ — connect an existing SecDrive account to iSafePass"""
     permission_classes = [IsAuthenticated]

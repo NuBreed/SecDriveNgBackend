@@ -21,6 +21,7 @@ urlpatterns = [
     # iSafePass SSO (bridge)
     path('isafepass/login/', views.ISafePassLoginAPIView.as_view(), name='isafepass-login'),
     path('isafepass/callback/', views.ISafePassCallbackAPIView.as_view(), name='isafepass-callback'),
+    path('isafepass/sso/', views.ISafePassSSOAPIView.as_view(), name='isafepass-sso'),
     path('isafepass/link/', views.ISafePassLinkAPIView.as_view(), name='isafepass-link'),
 
     # Dashboard / account management

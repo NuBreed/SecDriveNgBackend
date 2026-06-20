@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from journeys.models import Journey, JourneyEvent, JourneyLocation
+from journeys.models import Journey, JourneyEvent, JourneyLocation, JourneyShare, TrackingLink
 
 
 class JourneyEventInline(admin.TabularInline):
@@ -38,6 +38,19 @@ class JourneyEventAdmin(admin.ModelAdmin):
     list_filter = ['event_type']
     search_fields = ['journey__id']
     readonly_fields = ['id', 'timestamp']
+
+
+@admin.register(JourneyShare)
+class JourneyShareAdmin(admin.ModelAdmin):
+    list_display = ['id', 'journey', 'contact', 'active', 'shared_at']
+    list_filter = ['active']
+    readonly_fields = ['id', 'shared_at']
+
+
+@admin.register(TrackingLink)
+class TrackingLinkAdmin(admin.ModelAdmin):
+    list_display = ['id', 'journey', 'active', 'expires_at', 'created_at']
+    readonly_fields = ['id', 'token', 'created_at']
 
 
 @admin.register(JourneyLocation)

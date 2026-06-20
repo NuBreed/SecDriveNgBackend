@@ -136,6 +136,10 @@ def start_journey(journey, passenger) -> Journey:
     _log(journey, JourneyEvent.EventType.STARTED, actor=passenger,
          lat=journey.origin_lat, lng=journey.origin_lng)
     _broadcast(journey, 'journey.started')
+    # Sharing + iSafePass subscription — outside the atomic block so a
+    # sharing failure does not roll back the journey start.
+    from journeys.sharing import on_journey_started
+    transaction.on_commit(lambda: on_journey_started(journey))
     return journey
 
 
@@ -189,6 +193,14 @@ def complete_journey(journey, passenger) -> Journey:
     journey.save(update_fields=['status', 'completed_at'])
     _log(journey, JourneyEvent.EventType.COMPLETED, actor=passenger)
     _broadcast(journey, 'journey.completed')
+    from journeys.sharing import on_journey_event, unsubscribe_isafepass
+    transaction.on_commit(lambda: (
+        on_journey_event(journey, 'journey.completed', {
+            'message': 'Journey completed.',
+            'completed_at': str(journey.completed_at),
+        }),
+        unsubscribe_isafepass(journey),
+    ))
     return journey
 
 
@@ -239,4 +251,19 @@ def record_location(journey, latitude, longitude, speed=None, heading=None,
         'lat': latitude, 'lng': longitude,
         'speed': speed, 'heading': heading,
     })
+    # Trigger route intelligence analysis outside the atomic block.
+    _loc_id = str(loc.id)
+    _journey_id = str(journey.id)
+    transaction.on_commit(
+        lambda: _trigger_analysis(_journey_id, _loc_id)
+    )
     return loc
+
+
+def _trigger_analysis(journey_id: str, location_id: str):
+    """Schedule (or run inline) route intelligence analysis for a new location ping."""
+    try:
+        from route_intelligence.tasks import analyze_journey_location
+        analyze_journey_location.delay(journey_id, location_id)
+    except Exception:
+        pass
