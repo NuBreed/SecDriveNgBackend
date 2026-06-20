@@ -543,3 +543,185 @@ def notify_recipients_of_risk(journey, event_type: str, data: dict):
     """Fan-out risk/warning events to journey share recipients."""
     from journeys.sharing import notify_recipients
     notify_recipients(journey, event_type, data)
+
+
+# ── Pre-ride Route Safety Check (via iSafePass Partner API) ──────────────────
+
+def check_route_safety(place_id: str, destination: str) -> dict:
+    """
+    Return a safety report for a destination by:
+    1. Resolving place_id → lat/lng via Google Places Details (places app).
+    2. Calling iSafePass /api/v1/safety/route-intelligence/ for real corridor safety.
+    3. Calling iSafePass /api/v1/safety/route-alternatives/ for ranked safe routes.
+    4. Normalising both responses into the shape the Flutter app expects.
+
+    Falls back to a safe-default response when iSafePass is not configured.
+    """
+    from places.services import place_details
+    from integrations.services.isafepass_bridge import ISafePassBridge, ISafePassUnavailable
+
+    # ── 1. Resolve coordinates ────────────────────────────────────────────────
+    origin_lat = getattr(settings, 'ROUTE_CHECK_DEFAULT_LAT', 6.5244)
+    origin_lng = getattr(settings, 'ROUTE_CHECK_DEFAULT_LNG', 3.3792)
+    dest_lat, dest_lng = origin_lat, origin_lng
+
+    details = place_details(place_id)
+    if details:
+        # New Places API v1 shape: {"location": {"latitude": ..., "longitude": ...}}
+        loc = details.get('location') or {}
+        if loc.get('latitude'):
+            dest_lat = float(loc['latitude'])
+            dest_lng = float(loc['longitude'])
+        # Legacy shape: {"geometry": {"location": {"lat": ..., "lng": ...}}}
+        elif details.get('geometry', {}).get('location'):
+            loc = details['geometry']['location']
+            dest_lat = float(loc['lat'])
+            dest_lng = float(loc['lng'])
+
+    payload = {
+        'origin_latitude':        origin_lat,
+        'origin_longitude':       origin_lng,
+        'destination_latitude':   dest_lat,
+        'destination_longitude':  dest_lng,
+    }
+
+    # ── 2 & 3. Call iSafePass partner API ─────────────────────────────────────
+    bridge = ISafePassBridge()
+    try:
+        safety_data = bridge._post('/api/v1/safety/route-intelligence/', payload)
+        alt_data    = bridge._post('/api/v1/safety/route-alternatives/', payload)
+    except ISafePassUnavailable:
+        logger.warning('iSafePass not configured — returning default route safety response.')
+        return _fallback_report(destination)
+    except Exception as exc:
+        logger.exception('iSafePass route-safety call failed: %s', exc)
+        return _fallback_report(destination)
+
+    # ── 4. Normalise ──────────────────────────────────────────────────────────
+    raw_score    = safety_data.get('safety_score', 80)
+    risk_level   = safety_data.get('risk_level', 'low')
+    safety_level = _risk_level_to_label(risk_level)
+    safety_score = int(raw_score)
+
+    travel_advice = safety_data.get('travel_advice', {})
+    summary = travel_advice.get('message') or _default_summary(safety_level, destination)
+
+    # ── Risks with counts from statistics + named zones/alerts ───────────────
+    stats = safety_data.get('statistics', {})
+    risks: list[dict] = []
+
+    _risk_labels = [
+        ('incidents',       'Incidents'),
+        ('hotspots',        'Hotspots'),
+        ('threat_zones',    'Threat Zones'),
+        ('alerts',          'Active Alerts'),
+        ('missing_persons', 'Missing Person Cases'),
+    ]
+    for key, label in _risk_labels:
+        count = stats.get(key, 0)
+        if count:
+            risks.append({'label': label, 'count': count})
+
+    for zone in safety_data.get('threat_zones_crossed', []):
+        name = zone.get('name', 'Unknown zone')
+        inc  = zone.get('active_incident_count', 0)
+        risks.append({'label': f'Threat zone: {name}', 'count': inc})
+
+    for alert in safety_data.get('active_alerts', []):
+        risks.append({'label': alert.get('title', 'Active alert'), 'count': 1})
+
+    # ── Recommendations from travel_advice status ─────────────────────────────
+    advice_status = travel_advice.get('status', 'safe')
+    recommendations = _recommendations_for(advice_status, alt_data)
+
+    # ── Alternatives from ranked routes (skip rank 1 = direct route) ─────────
+    alternatives: list[dict] = []
+    for route in alt_data.get('route_rankings', [])[1:4]:
+        alt_score = int(route.get('safety_score', 0))
+        alternatives.append({
+            'name':         route.get('route_name', 'Alternative').replace('_', ' ').title(),
+            'description':  route.get('travel_advice', {}).get('message', ''),
+            'safety_level': _risk_level_to_label(route.get('risk_level', 'low')),
+            'safety_score': alt_score,
+        })
+
+    return {
+        'destination':       destination,
+        'safety_level':      safety_level,
+        'safety_score':      safety_score,
+        'summary':           summary,
+        'risks':             risks[:8],
+        'recommendations':   recommendations,
+        'alternatives':      alternatives,
+    }
+
+
+def _risk_level_to_label(risk_level: str) -> str:
+    """Map iSafePass risk levels to Flutter app safety labels."""
+    mapping = {
+        'low':      'safe',
+        'medium':   'moderate',
+        'moderate': 'moderate',
+        'risky':    'moderate',
+        'high':     'dangerous',
+        'dangerous':'dangerous',
+        'critical': 'dangerous',
+    }
+    return mapping.get(risk_level.lower(), 'safe')
+
+
+def _default_summary(safety_level: str, destination: str) -> str:
+    return {
+        'safe':      f'{destination} is generally considered safe for travel.',
+        'moderate':  f'Exercise caution on your way to {destination}. Some risk factors noted.',
+        'dangerous': f'High risk area detected near {destination}. Consider alternatives or travel in daylight.',
+    }.get(safety_level, '')
+
+
+def _recommendations_for(advice_status: str, alt_data: dict) -> list[str]:
+    base = {
+        'safe': [
+            'Route looks clear — proceed normally.',
+            'Stay alert and keep emergency contacts informed.',
+        ],
+        'caution': [
+            'Share your live location with a trusted contact before departing.',
+            'Travel during daylight hours where possible.',
+            'Keep your phone charged and accessible.',
+            'Consider one of the safer alternative routes below.',
+        ],
+        'high_caution': [
+            'Avoid travelling alone on this route.',
+            'Inform someone of your departure time and expected arrival.',
+            'Use a safer alternative route if available.',
+            'Keep doors locked and avoid stopping in unfamiliar areas.',
+        ],
+        'avoid': [
+            'Avoid this route — high-risk conditions detected.',
+            'Use one of the recommended alternative routes.',
+            'If travel is unavoidable, go in a group during daylight only.',
+            'Alert your emergency contacts before departing.',
+        ],
+    }.get(advice_status, ['Proceed with normal caution.'])
+
+    # Append the top-ranked safe alternative as a specific recommendation
+    for route in alt_data.get('route_rankings', []):
+        if route.get('recommended') and route.get('route_name') != 'direct':
+            name = route['route_name'].replace('_', ' ').title()
+            base = [r for r in base if 'alternative' not in r.lower()]
+            base.append(f'Recommended alternative: {name} (score {int(route.get("safety_score", 0))})')
+            break
+
+    return base
+
+
+def _fallback_report(destination: str) -> dict:
+    return {
+        'destination':       destination,
+        'safety_level':      'safe',
+        'safety_score':      80,
+        'summary':           f'Safety data temporarily unavailable for {destination}. Proceed with normal caution.',
+        'risks':             [],
+        'recommendations':   ['Proceed with normal caution.'],
+        'alternatives': [],
+    }

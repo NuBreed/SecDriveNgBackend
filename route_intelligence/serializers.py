@@ -58,3 +58,32 @@ class RouteAnalysisSerializer(serializers.Serializer):
 
 class EscalateSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=512, required=False, allow_blank=True, default='')
+
+
+# ── Route Safety Check (pre-ride) ─────────────────────────────────────────────
+
+class SafeAlternativeSerializer(serializers.Serializer):
+    name         = serializers.CharField()
+    description  = serializers.CharField()
+    safety_level = serializers.CharField()
+    safety_score = serializers.IntegerField()
+
+
+class RiskItemSerializer(serializers.Serializer):
+    label = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class RouteCheckRequestSerializer(serializers.Serializer):
+    place_id    = serializers.CharField()
+    destination = serializers.CharField()
+
+
+class RouteCheckResponseSerializer(serializers.Serializer):
+    destination      = serializers.CharField()
+    safety_level     = serializers.CharField()
+    safety_score     = serializers.IntegerField()
+    summary          = serializers.CharField()
+    risks            = RiskItemSerializer(many=True)
+    recommendations  = serializers.ListField(child=serializers.CharField())
+    alternatives     = SafeAlternativeSerializer(many=True)

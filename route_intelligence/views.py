@@ -15,6 +15,7 @@ from route_intelligence.models import (
 from route_intelligence.serializers import (
     EscalateSerializer, JourneyRiskSerializer, JourneyWarningSerializer,
     PlannedRouteSerializer, RouteAnalysisSerializer,
+    RouteCheckRequestSerializer, RouteCheckResponseSerializer,
 )
 
 
@@ -189,6 +190,27 @@ class JourneyEscalateView(APIView):
             'incident_id': result.get('incident_id', ''),
             'data': result,
         })
+
+
+# ── Pre-ride route safety check ──────────────────────────────────────────────
+
+class RouteCheckView(APIView):
+    """POST /api/v1/safety/route-check/"""
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=RouteCheckRequestSerializer,
+        responses={200: RouteCheckResponseSerializer},
+        summary='Check safety of a destination before a ride',
+    )
+    def post(self, request):
+        ser = RouteCheckRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        report = ri_svc.check_route_safety(
+            place_id=ser.validated_data['place_id'],
+            destination=ser.validated_data['destination'],
+        )
+        return Response(RouteCheckResponseSerializer(report).data)
 
 
 # ── Admin: high-risk journey list ─────────────────────────────────────────────

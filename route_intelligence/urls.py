@@ -5,7 +5,6 @@ from route_intelligence import views
 app_name = 'route_intelligence'
 
 # These are mounted as sub-paths of /api/v1/journeys/{pk}/ in config/urls.py.
-# The journey-scoped patterns use a <uuid:pk> captured by the parent include.
 journey_urlpatterns = [
     path('planned-route/', views.PlannedRouteView.as_view(), name='planned-route'),
     path('risk/', views.JourneyRiskView.as_view(), name='risk'),
@@ -17,4 +16,9 @@ journey_urlpatterns = [
 # Admin-scoped patterns.
 admin_urlpatterns = [
     path('admin/risk/high-risk/', views.AdminHighRiskJourneysView.as_view(), name='high-risk'),
+]
+
+# Standalone (non-journey-scoped) patterns — mounted directly at /api/v1/safety/.
+safety_urlpatterns = [
+    path('route-check/', views.RouteCheckView.as_view(), name='route-check'),
 ]

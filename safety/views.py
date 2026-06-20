@@ -197,18 +197,27 @@ class AddTrustedContactView(APIView):
 
 
 class ContactInviteView(APIView):
-    """POST /api/v1/contacts/invite/
-
-    Send an invite to a phone number not yet on SecDrive.
-    When the invited user registers, a post-save signal auto-accepts
-    all pending invites for their phone and creates TrustedContact rows.
+    """GET  /api/v1/contacts/invite/  — list caller's outgoing invites
+    POST /api/v1/contacts/invite/  — send / resend an invite
     """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
+        responses={200: ContactInviteSerializer(many=True)},
+        summary='List all outgoing invites for the current user',
+    )
+    def get(self, request):
+        invites = (
+            ContactInvite.objects
+            .filter(inviter=request.user)
+            .order_by('-created_at')
+        )
+        return Response(ContactInviteSerializer(invites, many=True).data)
+
+    @extend_schema(
         request=InviteSerializer,
         responses={201: ContactInviteSerializer, 200: ContactInviteSerializer},
-        summary='Invite a phone number to join SecDrive',
+        summary='Send or resend an invite to a phone number',
     )
     def post(self, request):
         ser = InviteSerializer(data=request.data)
@@ -220,8 +229,11 @@ class ContactInviteView(APIView):
             phone=phone,
             defaults={'status': ContactInvite.Status.PENDING},
         )
-        # If a previous invite was expired, reactivate it.
-        if not created and invite.status == ContactInvite.Status.EXPIRED:
+        # Resend: bump status back to PENDING and refresh timestamp.
+        if not created and invite.status in (
+            ContactInvite.Status.EXPIRED,
+            ContactInvite.Status.PENDING,
+        ):
             invite.status = ContactInvite.Status.PENDING
             invite.save(update_fields=['status'])
 

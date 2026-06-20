@@ -27,6 +27,27 @@ class ISafePassBridge:
         self.api_key_id = getattr(settings, 'ISAFEPASS_API_KEY_ID', '') or ''
         self.api_secret = getattr(settings, 'ISAFEPASS_API_SECRET', '') or ''
         self.timeout   = getattr(settings, 'ISAFEPASS_TIMEOUT_SECONDS', 10)
+        self.origin    = self._detect_origin()
+
+    def _detect_origin(self) -> str:
+        """Derive this server's origin from ALLOWED_HOSTS.
+
+        Picks the first non-wildcard, non-localhost host and wraps it with
+        https:// so iSafePass can validate it against allowed_origins.
+        Falls back to the raw first entry if nothing better is found.
+        """
+        hosts = getattr(settings, 'ALLOWED_HOSTS', [])
+        skip = {'localhost', '127.0.0.1', '*'}
+        import re
+        _ip_re = re.compile(r'^\d{1,3}(\.\d{1,3}){3}$')
+        for host in hosts:
+            if host not in skip and not host.startswith('.'):
+                scheme = 'http' if _ip_re.match(host) else 'https'
+                return f'{scheme}://{host}'
+        # last resort: first entry
+        if hosts:
+            return f'https://{hosts[0]}'
+        return ''
 
     @property
     def enabled(self):
@@ -44,6 +65,7 @@ class ISafePassBridge:
                 json=payload,
                 headers={
                     'Authorization': f'Api-Key {self.api_key_id}:{self.api_secret}',
+                    'Origin': self.origin,
                 },
                 timeout=self.timeout,
             )
@@ -58,29 +80,15 @@ class ISafePassBridge:
     def get_token(self, email: str, password: str) -> str:
         """Exchange iSafePass email+password for an iSafePass access token.
 
-        This call does NOT use bridge auth headers — it hits the iSafePass
-        public auth endpoint on behalf of the user. Returns the access token string.
+        Uses the dedicated bridge endpoint (Api-Key authenticated) so this call
+        is completely separate from the partner dashboard login flow.
+        Returns the access token string.
         """
-        if not self.base_url:
-            raise ISafePassUnavailable('iSafePass integration is not configured.')
-
-        import requests
-        try:
-            resp = requests.post(
-                f'{self.base_url}/api/auth/token/',
-                json={'email': email, 'password': password},
-                timeout=self.timeout,
-            )
-            resp.raise_for_status()
-            access = resp.json().get('access')
-            if not access:
-                raise ISafePassUnavailable('iSafePass did not return an access token.')
-            return access
-        except ISafePassUnavailable:
-            raise
-        except Exception as exc:
-            logger.exception('iSafePass get_token failed: %s', exc)
-            raise ISafePassUnavailable('Could not authenticate with iSafePass.') from exc
+        data = self._post('/api/v1/bridge/user-token/', {'email': email, 'password': password})
+        access = data.get('access')
+        if not access:
+            raise ISafePassUnavailable('iSafePass did not return an access token.')
+        return access
 
     def verify_and_fetch(self, credential):
         """Verify an iSafePass credential (token/code) and return the user's
@@ -98,13 +106,13 @@ class ISafePassBridge:
               "trust_network": [...]
             }
         """
-        return self._post('/api/bridge/verify/', {'credential': credential})
+        return self._post('/api/v1/bridge/verify/', {'credential': credential})
 
     def link_account(self, user, credential):
         """Confirm ownership of an iSafePass account for an existing SecDrive
         user, returning the same identity payload as ``verify_and_fetch``."""
         return self._post(
-            '/api/bridge/link/',
+            '/api/v1/bridge/link/',
             {'credential': credential, 'email': user.email, 'phone': user.phone},
         )
 
@@ -132,12 +140,12 @@ class ISafePassBridge:
                 'address': journey.destination_address,
             },
         }
-        return self._post('/api/bridge/journey/subscribe/', payload)
+        return self._post('/api/v1/bridge/journey/subscribe/', payload)
 
     def unsubscribe_journey(self, subscription_id: str, reason: str = '') -> dict:
         """Close a journey monitoring subscription on iSafePass."""
         return self._post(
-            '/api/bridge/journey/unsubscribe/',
+            '/api/v1/bridge/journey/unsubscribe/',
             {'subscription_id': subscription_id, 'reason': reason},
         )
 
@@ -146,14 +154,14 @@ class ISafePassBridge:
 
         Expected response: {"sos_id": "...", "status": "TRIGGERED", ...}
         """
-        return self._post('/api/bridge/sos/', payload)
+        return self._post('/api/v1/bridge/sos/', payload)
 
     def create_incident(self, payload: dict) -> dict:
         """Create a safety incident in iSafePass for a journey that has crossed a risk threshold.
 
         Expected response: {"incident_id": "...", "status": "OPEN", ...}
         """
-        return self._post('/api/bridge/incidents/', payload)
+        return self._post('/api/v1/bridge/incidents/', payload)
 
 
 def get_bridge():

@@ -77,6 +77,7 @@ LOCAL_APPS = [
     'qr_codes',
     'route_intelligence',
     'accident_detection',
+    'places',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -218,8 +219,9 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'otp': os.getenv('THROTTLE_OTP', '10/hour'),
-        'login': os.getenv('THROTTLE_LOGIN', '20/min'),
+        'otp':   os.getenv('THROTTLE_OTP',   '10/hour'),
+        'login': os.getenv('THROTTLE_LOGIN',  '20/min'),
+        'auth':  os.getenv('THROTTLE_AUTH',   '30/min'),
     },
 }
 
@@ -355,11 +357,11 @@ AFRICASTALKING_SENDER_ID = os.getenv('AFRICASTALKING_SENDER_ID', '')
 # iSafePass trusted backend bridge. When BASE_URL or the
 # service secret are unset the bridge is disabled and the SSO endpoints return
 # a clean 503 instead of attempting a live call.
-ISAFEPASS_BASE_URL      = os.getenv('ISAFEPASS_BASE_URL', '')
+ISAFEPASS_BASE_URL        = os.getenv('ISAFEPASS_BASE_URL', '')
 # ApiKey credentials issued by the iSafePass developer portal for SecDrive's
 # DeveloperApplication (bridge_enabled=True required on that app).
-ISAFEPASS_API_KEY_ID    = os.getenv('ISAFEPASS_API_KEY_ID', '')
-ISAFEPASS_API_SECRET    = os.getenv('ISAFEPASS_API_SECRET', '')
+ISAFEPASS_API_KEY_ID      = os.getenv('ISAFEPASS_API_KEY_ID', '')
+ISAFEPASS_API_SECRET      = os.getenv('ISAFEPASS_API_SECRET', '')
 ISAFEPASS_TIMEOUT_SECONDS = int(os.getenv('ISAFEPASS_TIMEOUT_SECONDS', '10'))
 
 # ── KYC & Verification ───────────────────────────────────────────────

@@ -9,7 +9,7 @@ from drf_spectacular.views import (
 )
 
 from common.views import DocumentDownloadView
-from route_intelligence.urls import journey_urlpatterns as ri_journey_urls, admin_urlpatterns as ri_admin_urls
+from route_intelligence.urls import journey_urlpatterns as ri_journey_urls, admin_urlpatterns as ri_admin_urls, safety_urlpatterns as ri_safety_urls
 from accident_detection.urls import journey_urlpatterns as ad_journey_urls, admin_urlpatterns as ad_admin_urls
 
 urlpatterns = [
@@ -30,6 +30,8 @@ urlpatterns = [
     path('api/v1/journeys/<uuid:pk>/', include(ad_journey_urls)),
     path('api/v1/', include(ad_admin_urls)),
     path('api/v1/contacts/', include('safety.urls')),
+    path('api/v1/places/', include('places.urls')),
+    path('api/v1/safety/', include(ri_safety_urls)),
     path('api/v1/tracking/', include('journeys.tracking_urls')),
     path('api/v1/isafepass/', include('integrations.urls')),
     # API schema + docs
