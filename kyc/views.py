@@ -65,6 +65,16 @@ class KYCStatusView(APIView):
         driver = getattr(user, 'driver', None)
         driver_v = getattr(driver, 'verification', None) if driver else None
 
+        # Heal verification_level if identity was approved outside the service
+        # (e.g. directly in Django admin) without updating the level field.
+        if (
+            identity is not None
+            and identity.status == VerificationStatus.APPROVED
+            and user.verification_level < user.VerificationLevel.IDENTITY
+        ):
+            user.verification_level = user.VerificationLevel.IDENTITY
+            user.save(update_fields=['verification_level'])
+
         # Document expiry warnings across all of the user's documents.
         expiring = [
             {'doc_type': d.doc_type, 'expiry_date': d.expiry_date, 'expired': d.is_expired}

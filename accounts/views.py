@@ -517,22 +517,44 @@ class ISafePassSSOAPIView(APIView):
 
 
 class ISafePassLinkAPIView(APIView):
-    """POST /isafepass/link/ — connect an existing SecDrive account to iSafePass"""
+    """POST /isafepass/link/ — connect an existing SecDrive account to iSafePass.
+
+    Accepts either:
+      • {"credential": "<isafepass-token>"}  — raw token (app-to-app flow)
+      • {"email": "...", "password": "..."}  — driver enters iSafePass creds;
+        backend fetches the token on their behalf (preferred mobile flow)
+    """
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
         request={'application/json': {'type': 'object', 'properties': {
-            'credential': {'type': 'string'}}}},
+            'credential': {'type': 'string'},
+            'email':      {'type': 'string'},
+            'password':   {'type': 'string'},
+        }}},
         responses=OpenApiResponse(description='Account linked.'),
     )
     def post(self, request):
         from accounts.models import ISafePassLink
 
         credential = request.data.get('credential')
-        if not credential:
-            return Response({'detail': 'credential is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
         bridge = get_bridge()
+
+        # Driver-friendly flow: exchange email+password for a credential token
+        # on the server side so the raw iSafePass token never travels to the client.
+        if not credential:
+            email    = (request.data.get('email') or '').strip()
+            password = (request.data.get('password') or '').strip()
+            if not email or not password:
+                return Response(
+                    {'detail': 'Provide either a credential token or your iSafePass email and password.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                credential = bridge.get_token(email, password)
+            except ISafePassUnavailable as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
         try:
             payload = bridge.link_account(request.user, credential)
         except ISafePassUnavailable as exc:
@@ -556,7 +578,12 @@ class ISafePassLinkAPIView(APIView):
             )
 
         _apply_isafepass_identity(request.user, payload)
-        return Response({'detail': 'iSafePass account linked.', 'isafepass_linked': True})
+        request.user.refresh_from_db()
+        return Response({
+            'detail': 'iSafePass account linked.',
+            'isafepass_linked': True,
+            'user': UserProfileSerializer(request.user).data,
+        })
 
 
 # ── Story 10: Device registration ────────────────────────────────────

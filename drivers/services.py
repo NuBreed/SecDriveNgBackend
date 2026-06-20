@@ -22,7 +22,17 @@ def submit_driver_verification(user, license_number, license_expiry,
 
     Requires the user's identity to be approved first (Level 2).
     """
-    if user.verification_level < User.VerificationLevel.IDENTITY:
+    identity = getattr(user, 'identity_verification', None)
+    identity_approved = (
+        identity is not None and identity.status == VerificationStatus.APPROVED
+    )
+    # Heal verification_level if identity was approved outside the service
+    # (e.g. directly in Django admin).
+    if identity_approved and user.verification_level < User.VerificationLevel.IDENTITY:
+        user.verification_level = User.VerificationLevel.IDENTITY
+        user.save(update_fields=['verification_level'])
+
+    if not (user.verification_level >= User.VerificationLevel.IDENTITY or identity_approved):
         raise VerificationError('Identity verification must be approved before driver verification.')
 
     driver, _ = Driver.objects.get_or_create(
