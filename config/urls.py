@@ -34,6 +34,8 @@ urlpatterns = [
     path('api/v1/safety/', include(ri_safety_urls)),
     path('api/v1/tracking/', include('journeys.tracking_urls')),
     path('api/v1/isafepass/', include('integrations.urls')),
+    path('api/v1/notifications/', include('notifications.urls')),
+    path('api/v1/help/', include('support.urls')),
     # API schema + docs
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

@@ -28,5 +28,6 @@ urlpatterns = [
     path('me/', views.MeAPIView.as_view(), name='me'),
     path('devices/', views.DevicesAPIView.as_view(), name='devices'),
     path('sessions/', views.SessionsAPIView.as_view(), name='sessions'),
+    path('sessions/<int:pk>/revoke/', views.SessionRevokeView.as_view(), name='session-revoke'),
     path('login-history/', views.LoginHistoryAPIView.as_view(), name='login-history'),
 ]

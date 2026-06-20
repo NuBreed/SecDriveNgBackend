@@ -78,6 +78,7 @@ LOCAL_APPS = [
     'route_intelligence',
     'accident_detection',
     'places',
+    'support',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

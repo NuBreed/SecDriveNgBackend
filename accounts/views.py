@@ -605,10 +605,28 @@ class SessionsAPIView(APIView):
             .order_by('-created_at')
         )
         data = [
-            {'id': t.id, 'created_at': t.created_at, 'expires_at': t.expires_at}
+            {
+                'id':         t.id,
+                'jti':        t.jti,
+                'created_at': t.created_at,
+                'expires_at': t.expires_at,
+            }
             for t in active
         ]
         return Response(data)
+
+
+class SessionRevokeView(APIView):
+    """DELETE /api/v1/auth/sessions/{id}/  — revoke a specific session."""
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            token = OutstandingToken.objects.get(id=pk, user=request.user)
+        except OutstandingToken.DoesNotExist:
+            return Response({'detail': 'Session not found.'}, status=status.HTTP_404_NOT_FOUND)
+        BlacklistedToken.objects.get_or_create(token=token)
+        return Response({'detail': 'Session revoked.'}, status=status.HTTP_200_OK)
 
 
 class LoginHistoryAPIView(APIView):
