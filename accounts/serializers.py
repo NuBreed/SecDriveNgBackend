@@ -23,6 +23,11 @@ class RegisterSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=20)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    role = serializers.ChoiceField(
+        choices=[User.Roles.PASSENGER, User.Roles.DRIVER],
+        default=User.Roles.PASSENGER,
+        required=False,
+    )
 
     def validate_email(self, value):
         value = value.strip().lower()
@@ -41,14 +46,13 @@ class RegisterSerializer(serializers.Serializer):
         return value
 
     def create(self, validated_data):
-        # New accounts start inactive (Passenger) until OTP verification.
         user = User(
             username=_unique_username(validated_data['email']),
             email=validated_data['email'],
             phone=validated_data['phone'],
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],
-            role=User.Roles.PASSENGER,
+            role=validated_data.get('role', User.Roles.PASSENGER),
             is_active=False,
             is_verified=False,
         )
