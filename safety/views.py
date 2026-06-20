@@ -243,6 +243,62 @@ class ContactInviteView(APIView):
         )
 
 
+# ── iSafePass family import ───────────────────────────────────────────────────
+
+class ISafePassFamilyView(APIView):
+    """GET /api/v1/contacts/isafepass-family/
+
+    Returns the authenticated user's iSafePass family/trust-network contacts
+    by doing a live bridge verify call. Requires the user to have linked their
+    iSafePass account via SSO.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from integrations.services.isafepass_bridge import ISafePassBridge, ISafePassUnavailable
+        from accounts.models import ISafePassLink
+
+        try:
+            link = request.user.isafepass_link
+        except ISafePassLink.DoesNotExist:
+            return Response(
+                {'detail': 'No iSafePass account linked. Log in with iSafePass first.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        bridge = ISafePassBridge()
+
+        # Fetch live from the iSafePass partner public API.
+        # Falls back to the cached profile_snapshot if the call fails.
+        contacts = []
+        if bridge.enabled and link.isafepass_user_id:
+            try:
+                data = bridge._get(
+                    '/api/v1/contacts/family/',
+                    params={'user_id': str(link.isafepass_user_id)},
+                )
+                contacts = data.get('contacts') or []
+            except ISafePassUnavailable:
+                pass
+
+        # Fallback: extract from cached snapshot if live call returned nothing.
+        if not contacts:
+            snapshot = link.profile_snapshot or {}
+            raw = snapshot.get('emergency_contacts') or snapshot.get('trust_network') or []
+            # Normalise snapshot items to {id, name, phone, email, relationship}.
+            for item in raw:
+                if isinstance(item, dict):
+                    contacts.append({
+                        'id':           str(item.get('id') or ''),
+                        'name':         item.get('name') or item.get('full_name') or '',
+                        'phone':        item.get('phone') or item.get('phone_number') or '',
+                        'email':        item.get('email') or '',
+                        'relationship': item.get('relationship') or 'Family',
+                    })
+
+        return Response({'contacts': contacts})
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _normalise_phone(phone: str) -> str:

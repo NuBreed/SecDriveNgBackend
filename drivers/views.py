@@ -1,4 +1,5 @@
 from django.http import HttpResponse
+from django.db.models import Q
 
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -12,10 +13,93 @@ from drf_spectacular.types import OpenApiTypes
 from drivers.serializers import (
     DriverVerificationSubmitSerializer,
     DriverVerificationSerializer,
+    DriverListSerializer,
 )
 from drivers import services
 from kyc.services import qr_service
 from qr_codes import services as qr_code_services
+
+
+class DriverSearchView(APIView):
+    """GET /api/v1/drivers/search/
+
+    Query params:
+      q           — name / license / plate search
+      vehicle_type — TAXI_DRIVER | OKADA_RIDER | KEKE_RIDER | BUS_DRIVER | SHUTTLE_DRIVER | DELIVERY_RIDER
+      verified    — true | false (default: true)
+      state       — e.g. Lagos
+      page        — 1-based (default 1)
+      page_size   — max 50 (default 20)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from drivers.models import Driver
+
+        q            = (request.query_params.get('q') or '').strip()
+        vehicle_type = (request.query_params.get('vehicle_type') or '').strip().upper()
+        verified_param = request.query_params.get('verified', 'true').lower()
+        state        = (request.query_params.get('state') or '').strip()
+        try:
+            page      = max(1, int(request.query_params.get('page', 1)))
+            page_size = min(50, max(1, int(request.query_params.get('page_size', 20))))
+        except (ValueError, TypeError):
+            page, page_size = 1, 20
+
+        qs = Driver.objects.select_related(
+            'user', 'verification'
+        ).order_by('-trust_score', '-created_at')
+
+        # Verified filter
+        if verified_param == 'true':
+            qs = qs.filter(verification__status='APPROVED')
+
+        # Vehicle type filter
+        if vehicle_type:
+            qs = qs.filter(participant_type=vehicle_type)
+
+        # State filter
+        if state:
+            qs = qs.filter(user__state__icontains=state)
+
+        # Text search — name, license, phone
+        if q:
+            qs = qs.filter(
+                Q(user__first_name__icontains=q) |
+                Q(user__last_name__icontains=q) |
+                Q(license_number__icontains=q) |
+                Q(user__phone_number__icontains=q)
+            )
+
+        total    = qs.count()
+        offset   = (page - 1) * page_size
+        drivers  = qs[offset: offset + page_size]
+        has_more = (offset + page_size) < total
+
+        serializer = DriverListSerializer(
+            drivers, many=True, context={'request': request}
+        )
+        return Response({
+            'results':   serializer.data,
+            'total':     total,
+            'page':      page,
+            'page_size': page_size,
+            'has_more':  has_more,
+        })
+
+
+class DriverDetailView(APIView):
+    """GET /api/v1/drivers/<uuid:user_id>/"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id):
+        from drivers.models import Driver
+        driver = Driver.objects.select_related(
+            'user', 'verification'
+        ).filter(user__id=user_id).first()
+        if not driver:
+            return Response({'detail': 'Driver not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(DriverListSerializer(driver, context={'request': request}).data)
 
 
 class DriverVerificationView(APIView):

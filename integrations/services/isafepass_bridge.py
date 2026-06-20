@@ -53,6 +53,30 @@ class ISafePassBridge:
     def enabled(self):
         return bool(self.base_url and self.api_key_id and self.api_secret)
 
+    def _get(self, path, params=None):
+        if not self.enabled:
+            raise ISafePassUnavailable('iSafePass integration is not configured.')
+
+        import requests
+
+        try:
+            resp = requests.get(
+                f'{self.base_url}{path}',
+                params=params,
+                headers={
+                    'Authorization': f'Api-Key {self.api_key_id}:{self.api_secret}',
+                    'Origin': self.origin,
+                },
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except ISafePassUnavailable:
+            raise
+        except Exception as exc:
+            logger.exception('iSafePass bridge GET failed: %s', exc)
+            raise ISafePassUnavailable('Could not reach iSafePass.') from exc
+
     def _post(self, path, payload):
         if not self.enabled:
             raise ISafePassUnavailable('iSafePass integration is not configured.')

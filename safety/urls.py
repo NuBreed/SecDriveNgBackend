@@ -10,5 +10,6 @@ urlpatterns = [
     # ── New endpoints ──────────────────────────────────────────────────────────
     path('check/',    views.ContactCheckView.as_view(),              name='check'),
     path('trusted/',  views.AddTrustedContactView.as_view(),         name='add-trusted'),
-    path('invite/',   views.ContactInviteView.as_view(),             name='invite'),
+    path('invite/',           views.ContactInviteView.as_view(),        name='invite'),
+    path('isafepass-family/', views.ISafePassFamilyView.as_view(),     name='isafepass-family'),
 ]
