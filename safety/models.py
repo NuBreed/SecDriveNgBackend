@@ -56,3 +56,38 @@ class TrustedContact(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.contact_type}) — owner:{self.owner_id}'
+
+
+class ContactInvite(models.Model):
+    """Pending invite sent from one user to a phone number not yet on SecDrive.
+
+    When the invited phone registers, a post-save signal converts the invite
+    into a real TrustedContact automatically.
+    """
+
+    class Status(models.TextChoices):
+        PENDING  = 'PENDING',  'Pending'
+        ACCEPTED = 'ACCEPTED', 'Accepted'
+        EXPIRED  = 'EXPIRED',  'Expired'
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    inviter     = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='sent_contact_invites',
+    )
+    phone       = models.CharField(max_length=30, db_index=True)
+    status      = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING)
+    invited_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='received_contact_invites',
+    )
+    created_at  = models.DateTimeField(auto_now_add=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = [('inviter', 'phone')]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.inviter} → {self.phone} [{self.status}]'
