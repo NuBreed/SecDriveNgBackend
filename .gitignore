@@ -23,6 +23,7 @@ env/
 db.sqlite3
 /staticfiles/
 /media/
+/private_media/
 
 # OS / editor
 .DS_Store
