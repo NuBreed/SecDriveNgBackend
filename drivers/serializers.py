@@ -4,7 +4,7 @@ from drivers.models import Driver, DriverVerification
 
 
 class DriverListSerializer(serializers.ModelSerializer):
-    id             = serializers.UUIDField(source='user.id', read_only=True)
+    id             = serializers.UUIDField(source='user.uuid', read_only=True)
     full_name      = serializers.SerializerMethodField()
     phone          = serializers.CharField(source='user.phone_number', default='')
     state          = serializers.CharField(source='user.state', default='')

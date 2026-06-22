@@ -96,7 +96,7 @@ class DriverDetailView(APIView):
         from drivers.models import Driver
         driver = Driver.objects.select_related(
             'user', 'verification'
-        ).filter(user__id=user_id).first()
+        ).filter(user__uuid=user_id).first()
         if not driver:
             return Response({'detail': 'Driver not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(DriverListSerializer(driver, context={'request': request}).data)
