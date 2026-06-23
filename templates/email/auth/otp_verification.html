@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Verify your SecDrive account{% endblock %}
+
+{% block hero %}
+<div class="hero">
+  <div style="text-align:center; margin-bottom:14px;">
+    <div style="width:64px;height:64px;background:rgba(245,158,11,0.18);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;">
+      <span style="font-size:28px;">✉️</span>
+    </div>
+  </div>
+  <div class="hero-title">Verify your account</div>
+  <div class="hero-sub">Enter the code below to activate your SecDrive account</div>
+</div>
+{% endblock %}
+
+{% block body %}
+<p class="greeting">Hi {{ first_name }},</p>
+<p class="text">
+  Thanks for signing up with SecDrive — Nigeria's safety-first ride platform.
+  Use the code below to verify your account and get started.
+</p>
+
+<div class="otp-box">
+  <div class="otp-label">Verification Code</div>
+  <div class="otp-code">{{ otp_code }}</div>
+  <div class="otp-expiry">⏱ Expires in {{ expiry_minutes }} minutes</div>
+</div>
+
+<div class="warn-card">
+  <p>
+    🔒 <strong>Never share this code.</strong> SecDrive will never ask for your OTP via call, SMS, or chat.
+    If you didn't create an account, you can safely ignore this email.
+  </p>
+</div>
+
+<hr class="divider" />
+
+<p class="text" style="font-size:13px; color:#9CA3AF; margin:0;">
+  Didn't request this? No action is needed — your email won't be registered unless the code is used.
+</p>
+{% endblock %}

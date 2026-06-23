@@ -31,19 +31,33 @@ def can_resend(user, purpose):
 
 
 def issue_and_send(user, purpose, channel=OTP.Channel.SMS):
-    """Create an OTP and deliver it. Returns (otp, dev_code_or_None).
+    """Create an OTP and deliver it via SMS (if phone on file) + email (if email on file).
+
+    Returns (otp, dev_code_or_None).
     """
     record = OTP.generate_for(user, purpose, channel=channel)
     message = _MESSAGES[purpose].format(code=record.code)
 
     dev_code = None
-    if channel == OTP.Channel.SMS and user.phone:
+
+    # ── SMS delivery ──────────────────────────────────────────────────
+    if user.phone:
         result = send_sms(user.phone, message)
         if result.expose_code:
             dev_code = record.code
     else:
-        # No phone on file — surface the code so the flow isn't blocked in dev.
         dev_code = record.code
+
+    # ── Email delivery ────────────────────────────────────────────────
+    if user.email:
+        try:
+            from notifications.email import send_otp_verification, send_otp_password_reset
+            if purpose == OTP.Purpose.ACCOUNT_VERIFICATION:
+                send_otp_verification(user, record.code)
+            elif purpose == OTP.Purpose.PASSWORD_RESET:
+                send_otp_password_reset(user, record.code)
+        except Exception:
+            pass  # email failure never blocks the flow
 
     return record, dev_code
 

@@ -109,6 +109,14 @@ TEMPLATES = [
             ],
         },
     },
+    {
+        'BACKEND': 'django.template.backends.jinja2.Jinja2',
+        'DIRS': [BASE_DIR / 'templates' / 'email'],
+        'APP_DIRS': False,
+        'OPTIONS': {
+            'environment': 'notifications.jinja2_env.environment',
+        },
+    },
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
@@ -307,12 +315,13 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'justwin.com.ng')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'mail.secdriveng.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'info@justwin.com.ng')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'noreply@secdriveng.com')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', "JustWin <noreply@justwin.com.ng>")
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'SecDrive <noreply@secdriveng.com>')
+EMAIL_SUBJECT_PREFIX = ''
 
 GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
 
@@ -332,10 +341,11 @@ GOOGLE_OAUTH_CLIENT_IDS = [
     if c.strip()
 ]
 
-FIREBASE_CREDENTIALS_PATH = os.getenv(
-    'FIREBASE_CREDENTIALS_PATH',
-    os.path.join(BASE_DIR, 'isafepass-firebase-adminsdk-fbsvc-5d54d6615c.json'),
+FIREBASE_CREDENTIALS_JSON = os.getenv(
+    'FIREBASE_CREDENTIALS_JSON',
+    os.path.join(BASE_DIR, 'secdrive-firebase-adminsdk-fbsvc-82e2259647.json'),
 )
+FIREBASE_CREDENTIALS_JSON_CONTENT = os.getenv('FIREBASE_CREDENTIALS_JSON_CONTENT', '')
 
 # ── Authentication & Identity Management ─────────────────────────────
 # OTP (account verification + password reset)

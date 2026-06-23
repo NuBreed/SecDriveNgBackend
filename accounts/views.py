@@ -106,6 +106,13 @@ class VerifyOTPAPIView(APIView):
         user.save(update_fields=['is_active', 'is_verified', 'verification_level'])
         auth_events.log_event(AuthEvent.Type.VERIFY, user=user, request=request)
 
+        if user.email:
+            try:
+                from notifications.email import send_welcome
+                send_welcome(user)
+            except Exception:
+                pass
+
         return Response({
             'detail': 'Account verified.',
             'user': UserProfileSerializer(user).data,
@@ -281,6 +288,13 @@ class ResetPasswordAPIView(APIView):
         auth_events.clear_failures(user)
         auth_events.log_event(AuthEvent.Type.PASSWORD_RESET, user=user, request=request)
 
+        if user.email:
+            try:
+                from notifications.email import send_password_changed
+                send_password_changed(user)
+            except Exception:
+                pass
+
         return Response({'detail': 'Password reset successfully. Please log in again.'})
 
 
@@ -298,6 +312,14 @@ class ChangePasswordAPIView(APIView):
 
         request.user.set_password(vd['new_password'])
         request.user.save(update_fields=['password'])
+
+        if request.user.email:
+            try:
+                from notifications.email import send_password_changed
+                send_password_changed(request.user)
+            except Exception:
+                pass
+
         return Response({'detail': 'Password changed successfully.'})
 
 

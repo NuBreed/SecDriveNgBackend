@@ -63,13 +63,13 @@ def clear_failures(user):
 # ── Devices ───────────────────────────────────────────────
 
 def register_device(user, request=None, payload=None):
-    """Upsert the device the user signed in from; tracks last-login device."""
+    """Upsert the device the user signed in from; sends new-device email if first seen."""
     payload = payload or {}
     device_id = (payload.get('device_id') or '').strip()
     if not device_id:
         return None
 
-    device, _ = Device.objects.update_or_create(
+    device, created = Device.objects.update_or_create(
         user=user,
         device_id=device_id,
         defaults={
@@ -80,6 +80,19 @@ def register_device(user, request=None, payload=None):
             'last_login_at': timezone.now(),
         },
     )
+
+    if created and user.email:
+        try:
+            from notifications.email import send_new_device_login
+            import datetime
+            send_new_device_login(user, {
+                'device_name': f"{payload.get('platform', 'Unknown')} — {payload.get('device_type', 'device')}",
+                'ip': _client_ip(request) or 'Unknown',
+                'time': datetime.datetime.now().strftime('%a %d %b %Y, %I:%M %p WAT'),
+            })
+        except Exception:
+            pass
+
     return device
 
 

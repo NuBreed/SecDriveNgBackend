@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome to SecDrive!{% endblock %}
+
+{% block hero %}
+<div class="hero">
+  <div style="text-align:center; margin-bottom:14px;">
+    <div style="width:64px;height:64px;background:rgba(22,163,74,0.18);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;">
+      <span style="font-size:28px;">🎉</span>
+    </div>
+  </div>
+  <div class="hero-title">You're all set, {{ first_name }}!</div>
+  <div class="hero-sub">
+    {% if role == "DRIVER" %}
+      Welcome to the SecDrive driver family — Nigeria's safest ride network
+    {% else %}
+      Your SecDrive account is active and ready to use
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block body %}
+<p class="greeting">Hi {{ first_name }},</p>
+<p class="text">
+  {% if role == "DRIVER" %}
+    Your account has been verified and you're now part of the SecDrive driver network.
+    Go online, accept trips, and ride safely knowing your family and passengers are always informed.
+  {% else %}
+    Your account is now fully verified. You can book rides, track your journey in real time, and share live updates with your loved ones — all from one app.
+  {% endif %}
+</p>
+
+<div class="success-card">
+  <p>✅ <strong>Account verified</strong> — you're ready to go!</p>
+</div>
+
+{% if role == "DRIVER" %}
+<p class="text" style="font-weight:600; margin-bottom:8px;">What you can do now:</p>
+<ul class="feature-list">
+  <li>Go online and start accepting ride requests</li>
+  <li>Link your iSafePass account so your family can track your trips</li>
+  <li>Register your vehicle for faster KYC approval</li>
+  <li>Enable drive mode to share real-time waypoints with followers</li>
+</ul>
+{% else %}
+<p class="text" style="font-weight:600; margin-bottom:8px;">What you can do now:</p>
+<ul class="feature-list">
+  <li>Book a ride with a verified SecDrive driver</li>
+  <li>Scan your driver's QR code for identity confirmation</li>
+  <li>Share live trip tracking with family or friends</li>
+  <li>Trigger SOS alerts instantly if you feel unsafe</li>
+</ul>
+{% endif %}
+
+<div class="btn-wrap">
+  <a href="{{ brand_url }}" class="btn btn-primary">Open SecDrive</a>
+</div>
+
+<hr class="divider" />
+
+<p class="text" style="font-size:13px; color:#9CA3AF; margin:0; text-align:center;">
+  Need help? Our support team is always available at
+  <a href="mailto:{{ support_email }}" style="color:#1B3A6B; font-weight:600;">{{ support_email }}</a>
+</p>
+{% endblock %}

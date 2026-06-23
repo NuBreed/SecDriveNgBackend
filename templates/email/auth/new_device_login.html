@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}New login detected on your account{% endblock %}
+
+{% block hero %}
+<div class="hero">
+  <div style="text-align:center; margin-bottom:14px;">
+    <div style="width:64px;height:64px;background:rgba(220,38,38,0.18);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;">
+      <span style="font-size:28px;">📱</span>
+    </div>
+  </div>
+  <div class="hero-title">New login detected</div>
+  <div class="hero-sub">A new device just signed in to your SecDrive account</div>
+</div>
+{% endblock %}
+
+{% block body %}
+<p class="greeting">Hi {{ first_name }},</p>
+<p class="text">
+  We noticed a login to your SecDrive account from a device we don't recognise.
+  Here are the details:
+</p>
+
+<div style="background:#F9FAFB; border:1px solid #E5E7EB; border-radius:12px; padding:20px; margin:20px 0;">
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <td style="padding:8px 0; font-size:13px; color:#9CA3AF; width:40%;">Device</td>
+      <td style="padding:8px 0; font-size:14px; color:#111827; font-weight:600;">{{ device_name }}</td>
+    </tr>
+    <tr style="border-top:1px solid #F3F4F6;">
+      <td style="padding:8px 0; font-size:13px; color:#9CA3AF;">IP Address</td>
+      <td style="padding:8px 0; font-size:14px; color:#111827; font-weight:600;">{{ ip_address }}</td>
+    </tr>
+    <tr style="border-top:1px solid #F3F4F6;">
+      <td style="padding:8px 0; font-size:13px; color:#9CA3AF;">Time</td>
+      <td style="padding:8px 0; font-size:14px; color:#111827; font-weight:600;">{{ login_time }}</td>
+    </tr>
+  </table>
+</div>
+
+<div class="info-card">
+  <p>
+    ✅ <strong>Was this you?</strong> No action is needed. You can safely ignore this email.
+  </p>
+</div>
+
+<div class="warn-card">
+  <p>
+    🚨 <strong>Wasn't you?</strong> Your account may be at risk. Reset your password immediately
+    and contact our support team.
+  </p>
+</div>
+
+<div class="btn-wrap">
+  <a href="mailto:{{ support_email }}" class="btn btn-danger">Report Suspicious Login</a>
+</div>
+
+<hr class="divider" />
+
+<p class="text" style="font-size:13px; color:#9CA3AF; margin:0; text-align:center;">
+  To keep your account safe, use a strong unique password and never share your OTP codes.
+</p>
+{% endblock %}
