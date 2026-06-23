@@ -10,16 +10,18 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django_asgi_app = get_asgi_application()
 
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.security.websocket import AllowedHostsOriginValidator
 
 from journeys.middleware import JWTAuthMiddleware
 from journeys.routing import websocket_urlpatterns
 
 application = ProtocolTypeRouter({
     'http': django_asgi_app,
-    'websocket': AllowedHostsOriginValidator(
-        JWTAuthMiddleware(
-            URLRouter(websocket_urlpatterns)
-        )
+    # AllowedHostsOriginValidator is intentionally omitted: native mobile
+    # clients (Flutter dart:io WebSocket) do not send an Origin header, so
+    # the validator would reject every connection with 403. Security is
+    # handled by JWTAuthMiddleware — each consumer closes unauthenticated
+    # connections immediately with code 4001.
+    'websocket': JWTAuthMiddleware(
+        URLRouter(websocket_urlpatterns)
     ),
 })

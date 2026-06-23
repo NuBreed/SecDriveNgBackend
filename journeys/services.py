@@ -25,6 +25,25 @@ def _log(journey, event_type, actor=None, **meta):
     return journey
 
 
+def _push_to_user(user_pk, message):
+    """Send a group message to a user's personal notification channel.
+
+    Non-blocking — a missing channel layer must never crash an HTTP request.
+    """
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        layer = get_channel_layer()
+        if layer is None:
+            return
+        async_to_sync(layer.group_send)(
+            f'notifications_{user_pk}',
+            {'type': 'notification.message', **message},
+        )
+    except Exception:
+        pass
+
+
 def _broadcast(journey, event_type, data=None):
     """Send a Channels group message to the journey's room.
 
@@ -54,8 +73,15 @@ def _broadcast(journey, event_type, data=None):
 # ─── creation (Story 1) ───────────────────────────────────────────────────────
 
 @transaction.atomic
-def create_journey(passenger, participant_token, asset_token) -> Journey:
-    """Verify both QR tokens, then create a CREATED journey."""
+def create_journey(passenger, participant_token, asset_token='',
+                   group_size=1,
+                   origin_lat=None, origin_lng=None, origin_address='',
+                   destination_lat=None, destination_lng=None, destination_address='') -> Journey:
+    """Verify participant QR token, then create a CREATED journey.
+
+    asset_token is optional: if omitted the driver's first verified vehicle is
+    used automatically so passengers only need to scan a single QR code.
+    """
     from qr_codes import services as qr_svc
     from qr_codes.models import QRCode
 
@@ -65,29 +91,164 @@ def create_journey(passenger, participant_token, asset_token) -> Journey:
             f'Participant QR invalid: {p_result.get("message", "Unknown error")}'
         )
 
-    a_result = qr_svc.verify_qr(asset_token, scanner=passenger)
-    if not a_result.get('valid'):
-        raise JourneyError(
-            f'Asset QR invalid: {a_result.get("message", "Unknown error")}'
-        )
-
-    # Resolve QRCode records from embedded UUIDs.
     p_qr = QRCode.objects.get(token=participant_token)
-    a_qr = QRCode.objects.get(token=asset_token)
-
     driver = p_qr.content_object
-    vehicle = a_qr.content_object
+
+    # Resolve vehicle — either from explicit asset token or driver's verified vehicle.
+    if asset_token:
+        a_result = qr_svc.verify_qr(asset_token, scanner=passenger)
+        if not a_result.get('valid'):
+            raise JourneyError(
+                f'Asset QR invalid: {a_result.get("message", "Unknown error")}'
+            )
+        a_qr = QRCode.objects.get(token=asset_token)
+        vehicle = a_qr.content_object
+    else:
+        vehicle = (
+            driver.user.vehicles_owned.filter(is_verified=True).first()
+            or driver.user.vehicles_owned.first()
+        )
+        if vehicle is None:
+            raise JourneyError('Driver has no registered vehicle.')
+        a_qr = getattr(vehicle, 'qr_code', None)
 
     journey = Journey.objects.create(
         passenger=passenger,
         driver=driver,
         vehicle=vehicle,
         participant_qr=p_qr,
-        asset_qr=a_qr,
+        asset_qr=a_qr,  # may be None when auto-resolved
         status=Journey.Status.CREATED,
+        group_size=max(1, int(group_size)),
+        origin_lat=origin_lat,
+        origin_lng=origin_lng,
+        origin_address=origin_address or '',
+        destination_lat=destination_lat,
+        destination_lng=destination_lng,
+        destination_address=destination_address or '',
     )
     _log(journey, JourneyEvent.EventType.CREATED, actor=passenger)
     _broadcast(journey, 'journey.created')
+
+    # ── Notify driver of the incoming ride request ──────────────────────────
+    passenger_name = (
+        f'{passenger.first_name} {passenger.last_name}'.strip()
+        or passenger.email
+    )
+    _push_to_user(driver.user_id, {
+        'event': 'ride_request',
+        'journey_id': str(journey.id),
+        'passenger': {
+            'name': passenger_name,
+            'phone': getattr(passenger, 'phone_number', '') or '',
+        },
+        'origin_address': journey.origin_address or '',
+        'destination_address': journey.destination_address or '',
+        'group_size': journey.group_size,
+        'created_at': journey.created_at.isoformat(),
+    })
+    from notifications.services import notify
+    from notifications.models import Notification
+    notify(
+        driver.user,
+        title='New Ride Request',
+        body=f'{passenger_name} wants to ride with you.',
+        type=Notification.Type.RIDE,
+        journey_id=str(journey.id),
+    )
+
+    # FCM push (works when app is in background or killed)
+    try:
+        from notifications.fcm import send_to_device
+        prefs = getattr(driver.user, 'notification_prefs', None)
+        push_token = prefs.push_token if prefs else None
+        if push_token:
+            send_to_device(
+                token=push_token,
+                title='🚗 New Ride Request',
+                body=f'{passenger_name} wants to ride with you. Tap to respond.',
+                data={
+                    'type':                'ride_request',
+                    'journey_id':          str(journey.id),
+                    'passenger_name':      passenger_name,
+                    'passenger_phone':     getattr(passenger, 'phone_number', '') or '',
+                    'origin_address':      journey.origin_address or '',
+                    'destination_address': journey.destination_address or '',
+                    'group_size':          str(journey.group_size),
+                },
+            )
+    except Exception:
+        pass
+    # ───────────────────────────────────────────────────────────────────────
+
+    return journey
+
+
+# ─── driver accept / decline (QR-scan ride requests) ─────────────────────────
+
+@transaction.atomic
+def accept_journey(journey, driver_user) -> Journey:
+    """Driver accepts an incoming ride request (CREATED → VERIFIED)."""
+    if journey.driver.user_id != driver_user.pk:
+        raise JourneyError('Only the journey driver may accept this request.')
+    if journey.status != Journey.Status.CREATED:
+        raise JourneyError(f'Cannot accept a journey in status {journey.status}.')
+
+    journey.status = Journey.Status.VERIFIED
+    journey.save(update_fields=['status'])
+    _log(journey, JourneyEvent.EventType.ALERT, actor=driver_user,
+         detail='driver_accepted')
+    _broadcast(journey, 'journey.accepted')
+    _push_to_user(journey.passenger_id, {
+        'event': 'ride_accepted',
+        'journey_id': str(journey.id),
+        'message': 'Your driver accepted the ride. Board when ready.',
+    })
+    from notifications.services import notify
+    from notifications.models import Notification
+    driver_name = (
+        f'{driver_user.first_name} {driver_user.last_name}'.strip()
+        or 'Your driver'
+    )
+    notify(
+        journey.passenger,
+        title='Ride Accepted',
+        body=f'{driver_name} accepted your ride request. Board when ready.',
+        type=Notification.Type.RIDE,
+        journey_id=str(journey.id),
+    )
+    return journey
+
+
+@transaction.atomic
+def decline_journey(journey, driver_user) -> Journey:
+    """Driver declines an incoming ride request (CREATED → CANCELLED)."""
+    if journey.driver.user_id != driver_user.pk:
+        raise JourneyError('Only the journey driver may decline this request.')
+    if journey.status != Journey.Status.CREATED:
+        raise JourneyError(f'Cannot decline a journey in status {journey.status}.')
+
+    journey.status = Journey.Status.CANCELLED
+    journey.cancelled_at = timezone.now()
+    journey.cancellation_reason = 'driver_declined'
+    journey.save(update_fields=['status', 'cancelled_at', 'cancellation_reason'])
+    _log(journey, JourneyEvent.EventType.CANCELLED, actor=driver_user,
+         reason='driver_declined')
+    _broadcast(journey, 'journey.declined')
+    _push_to_user(journey.passenger_id, {
+        'event': 'ride_declined',
+        'journey_id': str(journey.id),
+        'message': 'Your driver declined the ride request. Please try another driver.',
+    })
+    from notifications.services import notify
+    from notifications.models import Notification
+    notify(
+        journey.passenger,
+        title='Ride Declined',
+        body='Your driver declined the ride request. Please try another driver.',
+        type=Notification.Type.RIDE,
+        journey_id=str(journey.id),
+    )
     return journey
 
 

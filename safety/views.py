@@ -299,6 +299,51 @@ class ISafePassFamilyView(APIView):
         return Response({'contacts': contacts})
 
 
+class LocationSafetyCheckView(APIView):
+    """GET /api/v1/contacts/location-safety/?lat=&lng=&radius_m=500
+
+    Queries iSafePass for the safety rating of a GPS coordinate.
+    Returns a cached/fallback response if the bridge is unavailable.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            lat = float(request.query_params['lat'])
+            lng = float(request.query_params['lng'])
+        except (KeyError, ValueError):
+            return Response(
+                {'detail': 'lat and lng query params are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        radius_m = int(request.query_params.get('radius_m', 500))
+
+        from integrations.services.isafepass_bridge import ISafePassBridge, ISafePassUnavailable
+        bridge = ISafePassBridge()
+
+        if not bridge.enabled:
+            # Bridge not configured — return a neutral unknown response.
+            return Response(_unknown_location_safety())
+
+        try:
+            data = bridge.get_location_safety(lat, lng, radius_m)
+            return Response(data)
+        except ISafePassUnavailable:
+            return Response(_unknown_location_safety())
+
+
+def _unknown_location_safety():
+    return {
+        'rating': 'unknown',
+        'score': None,
+        'label': 'Location safety data unavailable',
+        'incident_count': None,
+        'categories': [],
+        'last_incident_at': None,
+    }
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _normalise_phone(phone: str) -> str:

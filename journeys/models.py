@@ -79,6 +79,9 @@ class Journey(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
 
+    # Group size (passenger + children / companions).
+    group_size = models.PositiveSmallIntegerField(default=1)
+
     # Cancellation / pause meta.
     pause_reason = models.CharField(max_length=256, blank=True)
     cancellation_reason = models.CharField(max_length=256, blank=True)
@@ -223,6 +226,28 @@ class JourneyShare(models.Model):
         base = self.default_privacy
         base.update(self.privacy)
         return base
+
+
+class JourneySensorData(models.Model):
+    """Accelerometer + GPS sample posted by the passenger app for crash detection."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    journey = models.ForeignKey(Journey, on_delete=models.CASCADE, related_name='sensor_data')
+    acceleration_x = models.FloatField()
+    acceleration_y = models.FloatField()
+    acceleration_z = models.FloatField()
+    acceleration_magnitude = models.FloatField()
+    speed = models.FloatField(null=True, blank=True)
+    lat = models.FloatField(null=True, blank=True)
+    lng = models.FloatField(null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [models.Index(fields=['journey', '-timestamp'])]
+
+    def __str__(self):
+        return f'SensorData({self.journey_id}, mag={self.acceleration_magnitude:.2f})'
 
 
 class TrackingLink(models.Model):

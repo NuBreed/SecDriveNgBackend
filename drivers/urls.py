@@ -10,4 +10,6 @@ urlpatterns = [
     path('verification/',   views.DriverVerificationView.as_view(),       name='verification'),
     path('verification/status/', views.DriverVerificationStatusView.as_view(), name='verification-status'),
     path('qr/',             views.DriverQRView.as_view(),                 name='qr'),
+    path('nearby/',         views.NearbyDriversView.as_view(),            name='nearby'),
+    path('presence/',       views.DriverPresenceView.as_view(),           name='presence'),
 ]

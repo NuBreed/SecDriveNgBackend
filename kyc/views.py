@@ -93,12 +93,15 @@ class KYCStatusView(APIView):
             ),
         }
 
+        vehicle_v = user.vehicle_verifications.first() if hasattr(user, 'vehicle_verifications') else None
+
         return Response({
             'verification_level': user.verification_level,
             'verification_level_label': user.get_verification_level_display(),
             'checks': checks,
             'identity_status': identity.status if identity else VerificationStatus.NOT_SUBMITTED,
             'driver_status': driver_v.status if driver_v else VerificationStatus.NOT_SUBMITTED,
+            'vehicle_status': vehicle_v.status if vehicle_v else VerificationStatus.NOT_SUBMITTED,
             'trust_score': user.trust_score,
             'badges': badge_svc.badges_for(user),
             'expiring_documents': expiring,

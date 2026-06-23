@@ -50,6 +50,25 @@ class Driver(models.Model):
         return f'Driver({self.user})'
 
 
+class DriverPresence(models.Model):
+    """Real-time position beacon posted by a driver in monitoring mode.
+
+    Upserted every few seconds while the driver has the monitoring screen open.
+    Records older than 30 seconds are treated as offline.
+    """
+    driver     = models.OneToOneField(
+        Driver, on_delete=models.CASCADE, related_name='presence',
+    )
+    lat        = models.FloatField()
+    lng        = models.FloatField()
+    speed_kmh  = models.FloatField(default=0.0)
+    heading    = models.FloatField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'Presence({self.driver}, {self.speed_kmh} km/h)'
+
+
 class DriverVerification(models.Model):
     """Driver credential verification request."""
 

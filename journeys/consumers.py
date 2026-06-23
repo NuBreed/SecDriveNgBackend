@@ -33,7 +33,7 @@ class JourneyConsumer(AsyncJsonWebsocketConsumer):
     """
 
     async def connect(self):
-        self.journey_id = self.scope['url_route']['kwargs']['journey_id']
+        self.journey_id = str(self.scope['url_route']['kwargs']['journey_id'])
         self.group_name = f'journey_{self.journey_id}'
         self.user = self.scope.get('user')
 
@@ -128,7 +128,7 @@ class TrackingConsumer(AsyncJsonWebsocketConsumer):
     """
 
     async def connect(self):
-        self.journey_id = self.scope['url_route']['kwargs']['journey_id']
+        self.journey_id = str(self.scope['url_route']['kwargs']['journey_id'])
         self.journey_group = f'journey_{self.journey_id}'
         self.tracking_group = f'tracking_{self.journey_id}'
         self.user = self.scope.get('user')

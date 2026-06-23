@@ -140,6 +140,158 @@ class DriverVerificationStatusView(APIView):
         return Response(DriverVerificationSerializer(req).data)
 
 
+def _haversine(lat1, lon1, lat2, lon2):
+    import math
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1))
+         * math.cos(math.radians(lat2))
+         * math.sin(dlon / 2) ** 2)
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+class NearbyDriversView(APIView):
+    """GET /api/v1/drivers/nearby/?lat=&lng=&radius_km=
+
+    Returns drivers visible on the map. Two sources, merged and deduped:
+
+    1. Drivers with an ACTIVE journey whose latest GPS ping is recent.
+    2. Drivers who have posted a DriverPresence beacon within the last 30 s
+       (covers drivers in monitoring mode without an active passenger journey).
+
+    ``speed_kmh`` drives the green/red colour on the passenger map:
+    > 2 km/h → moving (green), ≤ 2 km/h → stationary (red).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.utils import timezone
+        from datetime import timedelta
+        from journeys.models import Journey, JourneyLocation
+        from drivers.models import DriverPresence
+
+        try:
+            lat = float(request.query_params['lat'])
+            lng = float(request.query_params['lng'])
+        except (KeyError, ValueError, TypeError):
+            return Response(
+                {'detail': 'lat and lng query params are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        radius_km  = float(request.query_params.get('radius_km', 10))
+        seen_ids   = set()   # driver PKs already added
+        results    = []
+
+        # ── Source 1: presence beacons (30 s TTL) ─────────────────────────────
+        cutoff = timezone.now() - timedelta(seconds=30)
+        presences = (
+            DriverPresence.objects
+            .filter(updated_at__gte=cutoff)
+            .exclude(driver__user=request.user)
+            .select_related('driver__user')
+        )
+        for p in presences:
+            dist = _haversine(lat, lng, p.lat, p.lng)
+            if dist > radius_km:
+                continue
+            driver = p.driver
+            u = driver.user
+            name = f'{u.first_name} {u.last_name}'.strip() or u.email
+            seen_ids.add(driver.pk)
+            results.append({
+                'driver_id':        str(getattr(u, 'uuid', u.pk)),
+                'name':             name,
+                'participant_type': driver.participant_type,
+                'lat':              p.lat,
+                'lng':              p.lng,
+                'speed_kmh':        p.speed_kmh,
+                'heading':          p.heading,
+                'distance_km':      round(dist, 2),
+                'last_seen':        p.updated_at.isoformat(),
+                'source':           'presence',
+            })
+
+        # ── Source 2: active-journey location pings ───────────────────────────
+        active_journeys = (
+            Journey.objects
+            .filter(status=Journey.Status.ACTIVE)
+            .exclude(driver__user=request.user)
+            .exclude(driver__pk__in=seen_ids)   # skip if already from presence
+            .select_related('driver__user')
+        )
+        for journey in active_journeys:
+            last_loc = (
+                JourneyLocation.objects
+                .filter(journey=journey)
+                .order_by('-timestamp')
+                .first()
+            )
+            if last_loc is None:
+                continue
+            dist = _haversine(lat, lng, last_loc.latitude, last_loc.longitude)
+            if dist > radius_km:
+                continue
+            driver = journey.driver
+            u = driver.user
+            name = f'{u.first_name} {u.last_name}'.strip() or u.email
+            results.append({
+                'driver_id':        str(getattr(u, 'uuid', u.pk)),
+                'name':             name,
+                'participant_type': driver.participant_type,
+                'lat':              last_loc.latitude,
+                'lng':              last_loc.longitude,
+                'speed_kmh':        round(last_loc.speed * 3.6, 1) if last_loc.speed else 0.0,
+                'heading':          last_loc.heading,
+                'distance_km':      round(dist, 2),
+                'last_seen':        last_loc.timestamp.isoformat(),
+                'source':           'journey',
+            })
+
+        results.sort(key=lambda x: x['distance_km'])
+        return Response(results)
+
+
+class DriverPresenceView(APIView):
+    """POST /api/v1/drivers/presence/  — upsert position beacon (driver monitoring mode).
+    DELETE /api/v1/drivers/presence/  — go offline (remove beacon).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from drivers.models import Driver, DriverPresence
+        try:
+            driver = Driver.objects.get(user=request.user)
+        except Driver.DoesNotExist:
+            return Response({'detail': 'Driver profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            lat       = float(request.data['lat'])
+            lng       = float(request.data['lng'])
+            speed_kmh = float(request.data.get('speed_kmh', 0))
+            heading   = request.data.get('heading')
+            if heading is not None:
+                heading = float(heading)
+        except (KeyError, ValueError, TypeError):
+            return Response({'detail': 'lat and lng are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        DriverPresence.objects.update_or_create(
+            driver=driver,
+            defaults={'lat': lat, 'lng': lng, 'speed_kmh': speed_kmh, 'heading': heading},
+        )
+        return Response({'status': 'ok'})
+
+    def delete(self, request):
+        from drivers.models import Driver, DriverPresence
+        try:
+            driver = Driver.objects.get(user=request.user)
+            DriverPresence.objects.filter(driver=driver).delete()
+        except Driver.DoesNotExist:
+            pass
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class DriverQRView(APIView):
     """GET /api/v1/drivers/qr/ — issue a QR only for a verified, valid driver (Story 8)."""
     permission_classes = [IsAuthenticated]

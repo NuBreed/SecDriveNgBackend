@@ -187,6 +187,24 @@ class ISafePassBridge:
         """
         return self._post('/api/v1/bridge/incidents/', payload)
 
+    def get_location_safety(self, lat: float, lng: float, radius_m: int = 500) -> dict:
+        """Query iSafePass for the safety rating of a GPS coordinate.
+
+        Expected response:
+            {
+              "rating": "safe" | "moderate" | "unsafe",
+              "score": 0-100,          # higher = safer
+              "label": "Residential area — low incident history",
+              "incident_count": 3,     # incidents within radius in last 30 days
+              "categories": ["robbery", "assault"],   # dominant incident types
+              "last_incident_at": "2024-05-01T13:22:00Z" | null
+            }
+        """
+        return self._get(
+            '/api/v1/safety/location/',
+            params={'lat': lat, 'lng': lng, 'radius_m': radius_m},
+        )
+
 
 def get_bridge():
     return ISafePassBridge()
