@@ -1,4 +1,4 @@
-name: Deploy Django Backend to secdrive.ng
+name: Deploy SecDriveNG Backend to VPS
 
 on:
   push:
@@ -14,38 +14,32 @@ jobs:
         uses: actions/checkout@v4
 
       # ── 1. Upload source files via SFTP ──────────────────────────────────────
-      # Excludes venv, __pycache__, .pyc, media, staticfiles, celery schedule
-      # files, and local .env — none of these belong on the server via SFTP.
+      # Excludes venv, __pycache__, .pyc, media, staticfiles, and local .env
       - name: SFTP Deploy
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
-          username: ${{ secrets.FTP_BACK_USER }}
-          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          server: ${{ secrets.VPS_HOST }}
           port: 22
-          password: ${{ secrets.FTP_BACK_PASS }}
+          password: ${{ secrets.VPS_PASS }}
           local_path: "./*"
-          remote_path: "/home/secdrive/domains/api.secdrive.ng/backend/"
+          remote_path: "/var/www/secdriveng-api/"
           sftp_args: >-
             -o StrictHostKeyChecking=no
             -o ConnectTimeout=30
 
-      # ── 2. Post-deploy: install deps, migrate, restart services ──────────────
+      # ── 2. Post-deploy: install deps, migrate, collect static, restart ────────
       - name: Post-deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_BACK_USER }}
-          password: ${{ secrets.FTP_BACK_PASS }}
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASS }}
           port: 22
           command_timeout: 10m
           script: |
             set -e
-            cd /home/secdrive/domains/api.secdrive.ng/backend
-
-            echo "--- Ensuring system GDAL is installed ---"
-            if ! command -v gdal-config &>/dev/null; then
-              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y gdal-bin libgdal-dev --quiet
-            fi
+            cd /var/www/secdriveng-api
 
             echo "--- Setting up virtual environment ---"
             if [ ! -d "venv" ]; then
@@ -56,7 +50,6 @@ jobs:
 
             echo "--- Installing dependencies ---"
             pip install --upgrade pip --quiet
-
             pip install -r requirements.txt --quiet
 
             echo "--- Running migrations ---"
@@ -64,13 +57,17 @@ jobs:
 
             echo "--- Creating superuser (skips if already exists) ---"
             DJANGO_SUPERUSER_USERNAME="secdriveadmin" \
-            DJANGO_SUPERUSER_EMAIL="admin@secdrive.ng" \
-            DJANGO_SUPERUSER_PASSWORD="Paskey23@" \
+            DJANGO_SUPERUSER_EMAIL="admin@secdriveng.com" \
+            DJANGO_SUPERUSER_PASSWORD="${{ secrets.SUPERUSER_PASS }}" \
             python manage.py createsuperuser --noinput 2>/dev/null \
               && echo "Superuser created." \
               || echo "Superuser already exists, skipping."
 
             echo "--- Collecting static files ---"
             python manage.py collectstatic --no-input --clear
+
+            echo "--- Restarting services ---"
+            systemctl restart secdriveng-api.service
+            systemctl status secdriveng-api.service --no-pager
 
             echo "✅ Deploy complete."
