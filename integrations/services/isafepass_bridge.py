@@ -97,9 +97,22 @@ class ISafePassBridge:
             return resp.json()
         except ISafePassUnavailable:
             raise
+        except requests.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            try:
+                detail = exc.response.json().get('detail', '')
+            except Exception:
+                detail = ''
+            if status_code == 401:
+                raise ISafePassUnavailable(detail or 'Incorrect iSafePass email or password.') from exc
+            if status_code == 404:
+                raise ISafePassUnavailable(detail or 'No iSafePass account found for this email address.') from exc
+            if status_code == 409:
+                raise ISafePassUnavailable(detail or 'This iSafePass account is already linked to another user.') from exc
+            raise ISafePassUnavailable(detail or f'iSafePass returned an error ({status_code}).') from exc
         except Exception as exc:
             logger.exception('iSafePass bridge call failed: %s', exc)
-            raise ISafePassUnavailable('Could not reach iSafePass.') from exc
+            raise ISafePassUnavailable('Could not reach iSafePass. Please check your connection and try again.') from exc
 
     def get_token(self, email: str, password: str) -> str:
         """Exchange iSafePass email+password for an iSafePass access token.
