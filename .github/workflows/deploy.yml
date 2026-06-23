@@ -24,7 +24,7 @@ jobs:
           password: ${{ secrets.VPS_PASS }}
           local_path: "./*"
           remote_path: "/var/www/secdriveng-api/"
-          sftp_args: >-
+          sftpArgs: >-
             -o StrictHostKeyChecking=no
             -o ConnectTimeout=30
 
